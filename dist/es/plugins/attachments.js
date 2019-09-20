@@ -33,7 +33,6 @@ export var blobBufferUtil = {
   createBlobBuffer: function createBlobBuffer(data, type) {
     var blobBuffer;
 
-    console.log("test")
     if (isElectronRenderer && false) {
       // if we are inside of electron-renderer, always use the node-buffer
       return Buffer.from(data, {
@@ -43,6 +42,7 @@ export var blobBufferUtil = {
 
     try {
       // for browsers
+      console.log("data", data);
       blobBuffer = new Blob([data], {
         type: type
       });

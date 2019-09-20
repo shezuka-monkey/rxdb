@@ -45,7 +45,8 @@ export var blobBufferUtil = {
       console.log("type", type);
       console.log("data", data);
       blobBuffer = new Blob([data.data], {
-        type: type
+        //type: type
+        type: data.type
       });
       console.log("blobBuffer", blobBuffer);
         

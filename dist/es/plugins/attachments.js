@@ -40,6 +40,10 @@ export var blobBufferUtil = {
         type: type
       });
     }
+      
+    if (data instanceof Blob)  {
+        return data
+    }
 
     try {
       // for browsers

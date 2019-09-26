@@ -41,9 +41,9 @@ export var blobBufferUtil = {
       });
     }
       
-//     if (data instanceof Blob)  {
-//         return data
-//     }
+     if (data instanceof Blob)  {
+         return data
+     }
 
     try {
       // for browsers

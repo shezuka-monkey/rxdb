@@ -34,7 +34,7 @@ export var blobBufferUtil = {
     var blobBuffer;
 
     if (false && isElectronRenderer) {
-        console.log('isElectronRenderer', isElectronRenderer);
+        // console.log('isElectronRenderer', isElectronRenderer);
         // if we are inside of electron-renderer, always use the node-buffer
       return Buffer.from(data, {
         type: type
@@ -47,12 +47,12 @@ export var blobBufferUtil = {
 
     try {
       // for browsers
-      console.log("type", type);
+      // console.log("type", type);
       //console.log("data", data);
       blobBuffer = new Blob([data], {
         type: type
       });
-      console.log("blobBuffer", blobBuffer);
+      // console.log("blobBuffer", blobBuffer);
         
     } catch (e) {
       // for node

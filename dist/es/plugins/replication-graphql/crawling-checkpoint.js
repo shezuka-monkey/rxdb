@@ -2,6 +2,7 @@ import _regeneratorRuntime from "@babel/runtime/regenerator";
 import _asyncToGenerator from "@babel/runtime/helpers/asyncToGenerator";
 import { LOCAL_PREFIX } from '../../util';
 import { PLUGIN_IDENT, getDocFromPouchOrNull, wasRevisionfromPullReplication } from './helper';
+
 /**
  * when the replication starts,
  * we need a way to find out where it ended the last time.
@@ -9,7 +10,7 @@ import { PLUGIN_IDENT, getDocFromPouchOrNull, wasRevisionfromPullReplication } f
  * For push-replication, we use the pouchdb-sequence:
  * We get the documents newer then the last sequence-id
  * and push them to the server.
- * 
+ *
  * For pull-replication, we use the last document we got from the server:
  * We send the last document to the queryBuilder()
  * and recieve newer documents sorted in a batch
@@ -17,12 +18,11 @@ import { PLUGIN_IDENT, getDocFromPouchOrNull, wasRevisionfromPullReplication } f
 //
 // things for the push-checkpoint
 //
-
 var pushSequenceId = function pushSequenceId(endpointHash) {
   return LOCAL_PREFIX + PLUGIN_IDENT + '-push-checkpoint-' + endpointHash;
 };
 /**
- * @return {number} last sequence checkpoint
+ * @return last sequence checkpoint
  */
 
 
@@ -68,13 +68,6 @@ function _getLastPushSequence() {
 export function setLastPushSequence(_x3, _x4, _x5) {
   return _setLastPushSequence.apply(this, arguments);
 }
-/**
- * 
- * @param {*} collection 
- * @param {*} endpointHash 
- * @param {*} batchSize 
- * @return {Promise<{results: {id: string, seq: number, changes: {rev: string}[]}[], last_seq: number}>}
- */
 
 function _setLastPushSequence() {
   _setLastPushSequence = _asyncToGenerator(
@@ -131,7 +124,9 @@ function _getChangesSinceLastPushSequence() {
   _regeneratorRuntime.mark(function _callee3(collection, endpointHash) {
     var batchSize,
         lastPushSequence,
+        retry,
         changes,
+        useResults,
         _args3 = arguments;
     return _regeneratorRuntime.wrap(function _callee3$(_context3) {
       while (1) {
@@ -143,16 +138,24 @@ function _getChangesSinceLastPushSequence() {
 
           case 3:
             lastPushSequence = _context3.sent;
-            _context3.next = 6;
+            retry = true;
+
+          case 5:
+            if (!retry) {
+              _context3.next = 13;
+              break;
+            }
+
+            _context3.next = 8;
             return collection.pouch.changes({
               since: lastPushSequence,
               limit: batchSize,
               include_docs: true
             });
 
-          case 6:
+          case 8:
             changes = _context3.sent;
-            changes.results = changes.results.filter(function (change) {
+            useResults = changes.results.filter(function (change) {
               /**
                * filter out changes with revisions resulting from the pull-stream
                * so that they will not be upstreamed again
@@ -166,12 +169,26 @@ function _getChangesSinceLastPushSequence() {
               if (change.id.startsWith('_design/')) return false;
               return true;
             });
+
+            if (useResults.length === 0 && changes.results.length === batchSize) {
+              // no pushable docs found but also not reached the end -> re-run
+              lastPushSequence = changes.last_seq;
+              retry = true;
+            } else {
+              changes.results = useResults;
+              retry = false;
+            }
+
+            _context3.next = 5;
+            break;
+
+          case 13:
             changes.results.forEach(function (change) {
               change.doc = collection._handleFromPouch(change.doc);
             });
             return _context3.abrupt("return", changes);
 
-          case 10:
+          case 15:
           case "end":
             return _context3.stop();
         }
@@ -265,3 +282,4 @@ function _setLastPullDocument() {
   }));
   return _setLastPullDocument.apply(this, arguments);
 }
+//# sourceMappingURL=crawling-checkpoint.js.map

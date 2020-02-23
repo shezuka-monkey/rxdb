@@ -40,20 +40,16 @@ export var blobBufferUtil = {
         type: type
       });
     }
-      
-//      if (data instanceof Blob)  {
-//          return data
-//      }
+
+     if (data instanceof Blob)  {
+         return data
+     }
 
     try {
       // for browsers
-      // console.log("type", type);
-      //console.log("data", data);
       blobBuffer = new Blob([data], {
         type: type
       });
-      // console.log("blobBuffer", blobBuffer);
-        
     } catch (e) {
       // for node
       blobBuffer = Buffer.from(data, {
@@ -95,11 +91,13 @@ export var blobBufferUtil = {
 };
 
 var _assignMethodsToAttachment = function _assignMethodsToAttachment(attachment) {
-  Object.entries(attachment.doc.collection._attachments).forEach(function (_ref) {
+  Object.entries(attachment.doc.collection.attachments).forEach(function (_ref) {
     var funName = _ref[0],
         fun = _ref[1];
-    return attachment.__defineGetter__(funName, function () {
-      return fun.bind(attachment);
+    Object.defineProperty(attachment, funName, {
+      get: function get() {
+        return fun.bind(attachment);
+      }
     });
   });
 };
@@ -128,10 +126,6 @@ function () {
 
     _assignMethodsToAttachment(this);
   }
-  /**
-   * @return {Promise}
-   */
-
 
   var _proto = RxAttachment.prototype;
 
@@ -144,7 +138,6 @@ function () {
   }
   /**
    * returns the data for the attachment
-   * @return {Promise<Buffer|Blob>}
    */
   ;
 
@@ -182,10 +175,6 @@ export function fromPouchDocument(id, pouchDocAttachment, rxDocument) {
 function shouldEncrypt(doc) {
   return !!doc.collection.schema.jsonID.attachments.encrypted;
 }
-/**
- * @return {Promise}
- */
-
 
 export function putAttachment(_ref3) {
   var _this3 = this;
@@ -214,8 +203,6 @@ export function putAttachment(_ref3) {
 }
 /**
  * get an attachment of the document by its id
- * @param  {string} id
- * @return {RxAttachment}
  */
 
 export function getAttachment(id) {
@@ -230,7 +217,6 @@ export function getAttachment(id) {
 }
 /**
  * returns all attachments of the document
- * @return {RxAttachment[]}
  */
 
 export function allAttachments() {
@@ -250,17 +236,12 @@ export function preMigrateDocument(action) {
   delete action.migrated._attachments;
   return action;
 }
-/**
- * @return {Promise}
- */
-
 export function postMigrateDocument(action) {
   var primaryPath = action.oldCollection.schema.primaryPath;
   var attachments = action.doc._attachments;
   if (!attachments) return Promise.resolve(action);
   var currentPromise = Promise.resolve();
-
-  var _loop = function _loop(id) {
+  Object.keys(attachments).forEach(function (id) {
     var stubData = attachments[id];
     var primary = action.doc[primaryPath];
     currentPromise = currentPromise.then(function () {
@@ -272,12 +253,7 @@ export function postMigrateDocument(action) {
     }).then(function (res) {
       return action.res = res;
     });
-  };
-
-  for (var id in attachments) {
-    _loop(id);
-  }
-
+  });
   return currentPromise;
 }
 export var rxdb = true;
@@ -291,8 +267,8 @@ export var prototypes = {
         var _this5 = this;
 
         return this._dataSync$.pipe(map(function (data) {
-          if (!data._attachments) return {};
-          return data._attachments;
+          if (!data['_attachments']) return {};
+          return data['_attachments'];
         }), map(function (attachmentsData) {
           return Object.entries(attachmentsData);
         }), map(function (entries) {
@@ -318,3 +294,4 @@ export default {
   hooks: hooks,
   blobBufferUtil: blobBufferUtil
 };
+//# sourceMappingURL=attachments.js.map

@@ -33,22 +33,17 @@ The current implementation of this prototype-merging is very complicated and has
 We should rewrite it to a single pure function that returns the constructor.
 Instead of mergin the prototype into a single object, we should chain them together.
 
-### merge checks into dev-mode-plugin
-Currently we have the schema-check plugin which checks that the schema of a collection is correct. Other checks like [this](https://github.com/pubkey/rxdb/blob/fc3a38717137d1daf53db8be02ebc43bb7159ed1/src/rx-collection.js#L697) are still included in the codebase.
-We should create a seperate `dev-mode`-plugin which includes all checks and error-messages for the dev-mode.
+### remove the default export
+Using the default export is never a good idea because it automatically bundles every unused function into the build.
 
-### Add typescript
-Most of the bugs from the last year could have been prevented by using typescript.
-Planned steps:
-* Rename the src-files to `.ts`
-* Setup [@babel/typescript](https://babeljs.io/docs/en/babel-preset-typescript) which can remove the typings on build
-* Set `strict: false`
-* Add typing incrementally
-* Set `strict: true` and fix all errors
+### Refactor data-migrator
 
-### Rewrite jsonschema-validation
-In the past, before `8.0.0` we had to be able to validate subpaths of an object directly when a setter was called [see here](https://github.com/pubkey/rxdb/blob/master/orga/releases/8.0.0.md#setters-are-only-callable-on-temporary-documents).
-This is no longer the case so we can refactor the validation-logic and remove a big part of it's code which is [causing confusion](https://github.com/pubkey/rxdb/pull/1157).
+ - The current implemetation does not use pouchdb's bulkDocs which is much faster
+ - This could have been done in much less code which would be easier to uderstand
+
+### find() only accepts selector, not limit and skip
+
+Instead of only accepting the mango-selector with `find()`, we should also make it possible to directly pass the limit and skip value.
 
 # Maybe
 

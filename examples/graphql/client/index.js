@@ -19,6 +19,9 @@ RxDB.plugin(RxDBErrorMessagesModule);
 import RxDBValidateModule from 'rxdb/plugins/validate';
 RxDB.plugin(RxDBValidateModule);
 
+import UpdatePlugin from 'rxdb/plugins/update';
+RxDB.plugin(UpdatePlugin);
+
 import {
     GRAPHQL_PORT,
     GRAPHQL_PATH,
@@ -43,10 +46,12 @@ const heroSchema = {
             index: true
         },
         color: {
-            type: 'string'
+            type: 'string',
+            index: true
         },
         updatedAt: {
-            type: 'number'
+            type: 'number',
+            index: true
         }
     },
     required: ['color']
@@ -147,11 +152,11 @@ async function run() {
         },
         live: true,
         /**
-         * TODO
-         * we have to set this to a low value, because the subscription-trigger
-         * does not work sometimes. See below at the SubscriptionClient
+         * Because the websocket is used to inform the client
+         * when something has changed,
+         * we can set the liveIntervall to a high value
          */
-        liveInterval: 1000 * 2,
+        liveInterval: 1000 * 60 * 10, // 10 minutes
         deletedFlag: 'deleted'
     });
     // show replication-errors in logs
@@ -163,30 +168,21 @@ async function run() {
 
 
     // setup graphql-subscriptions for pull-trigger
-    /**
-     * TODO
-     * the subscriptions are randomly not triggered
-     * My investigation shows that this is because the server
-     * does not emit the websocket-messages.
-     * This should be fixed, likely on the server-side
-     */
     heroesList.innerHTML = 'Create SubscriptionClient..';
     const endpointUrl = 'ws://localhost:' + GRAPHQL_SUBSCRIPTION_PORT + GRAPHQL_SUBSCRIPTION_PATH;
     const wsClient = new SubscriptionClient(endpointUrl, {
         reconnect: true,
+        timeout: 1000 * 60,
         onConnect: () => {
             console.log('SubscriptionClient.onConnect()');
         },
-        connectionCallback: (error) => {
+        connectionCallback: () => {
             console.log('SubscriptionClient.connectionCallback:');
-            console.dir(error);
         },
         reconnectionAttempts: 10000,
-        inactivityTimeout: 0,
-        timeout: 1000 * 60
+        inactivityTimeout: 10 * 1000,
+        lazy: true
     });
-
-
     heroesList.innerHTML = 'Subscribe to GraphQL Subscriptions..';
     const query = `subscription onHumanChanged {
         humanChanged {
@@ -195,13 +191,14 @@ async function run() {
     }`;
     const ret = wsClient.request({ query });
     ret.subscribe({
-        next(data) {
-            console.log('subscription emitted => trigger run');
+        next: async (data) => {
+            console.log('subscription emitted => trigger run()');
             console.dir(data);
-            replicationState.run();
+            await replicationState.run();
+            console.log('run() done');
         },
         error(error) {
-            console.log('got error:');
+            console.log('run() got error:');
             console.dir(error);
         }
     });
@@ -269,6 +266,6 @@ async function run() {
     };
 }
 run().catch(err => {
-  console.log('run() threw an error:');
-  console.error(err);
+    console.log('run() threw an error:');
+    console.error(err);
 });

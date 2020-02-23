@@ -8,9 +8,9 @@ import _asyncToGenerator from "@babel/runtime/helpers/asyncToGenerator";
 import { BehaviorSubject, Subject } from 'rxjs';
 import { first, filter } from 'rxjs/operators';
 import GraphQLClient from 'graphql-client';
-import { promiseWait } from '../../util';
+import { promiseWait, flatClone } from '../../util';
 import Core from '../../core';
-import { hash, clone } from '../../util';
+import { hash } from '../../util';
 import { DEFAULT_MODIFIER, wasRevisionfromPullReplication, createRevisionForPulledDocument, getDocsWithRevisionsFromPouch } from './helper';
 import { setLastPushSequence, getLastPullDocument, setLastPullDocument, getChangesSinceLastPushSequence } from './crawling-checkpoint';
 import RxDBWatchForChangesPlugin from '../watch-for-changes';
@@ -27,21 +27,6 @@ export var RxGraphQLReplicationState =
 /*#__PURE__*/
 function () {
   function RxGraphQLReplicationState(collection, url, headers, pull, push, deletedFlag, live, liveInterval, retryTime) {
-    this.collection = collection;
-    this.client = GraphQLClient({
-      url: url,
-      headers: headers
-    });
-    this.endpointHash = hash(url);
-    this.pull = pull;
-    this.push = push;
-    this.deletedFlag = deletedFlag;
-    this.live = live;
-    this.liveInterval = liveInterval;
-    this.retryTime = retryTime;
-    this._runQueueCount = 0;
-    this._subs = [];
-    this._runningPromise = Promise.resolve();
     this._subjects = {
       recieved: new Subject(),
       // all documents that are recieved from the endpoint
@@ -56,16 +41,36 @@ function () {
       initialReplicationComplete: new BehaviorSubject(false) // true the initial replication-cycle is over
 
     };
+    this._runningPromise = Promise.resolve();
+    this._subs = [];
+    this._runQueueCount = 0;
+    this.initialReplicationComplete$ = undefined;
+    this.recieved$ = undefined;
+    this.send$ = undefined;
+    this.error$ = undefined;
+    this.canceled$ = undefined;
+    this.active$ = undefined;
+    this.collection = collection;
+    this.pull = pull;
+    this.push = push;
+    this.deletedFlag = deletedFlag;
+    this.live = live;
+    this.liveInterval = liveInterval;
+    this.retryTime = retryTime;
+    this.client = GraphQLClient({
+      url: url,
+      headers: headers
+    });
+    this.endpointHash = hash(url);
 
     this._prepare();
   }
-  /**
-   * things that are more complex to not belong into the constructor
-   */
-
 
   var _proto = RxGraphQLReplicationState.prototype;
 
+  /**
+   * things that are more complex to not belong into the constructor
+   */
   _proto._prepare = function _prepare() {
     var _this = this;
 
@@ -84,8 +89,8 @@ function () {
   };
 
   _proto.isStopped = function isStopped() {
-    if (!this.live && this._subjects.initialReplicationComplete._value) return true;
-    if (this._subjects.canceled._value) return true;else return false;
+    if (!this.live && this._subjects.initialReplicationComplete['_value']) return true;
+    if (this._subjects.canceled['_value']) return true;else return false;
   };
 
   _proto.awaitInitialReplication = function awaitInitialReplication() {
@@ -144,7 +149,7 @@ function () {
 
                         _this2._subjects.active.next(false);
 
-                        if (!willRetry && _this2._subjects.initialReplicationComplete._value === false) _this2._subjects.initialReplicationComplete.next(true);
+                        if (!willRetry && _this2._subjects.initialReplicationComplete['_value'] === false) _this2._subjects.initialReplicationComplete.next(true);
                         _this2._runQueueCount--;
 
                       case 7:
@@ -242,7 +247,7 @@ function () {
     return _run;
   }()
   /**
-   * @return {boolean} true if no errors occured
+   * @return true if no errors occured
    */
   ;
 
@@ -264,7 +269,7 @@ function () {
                 break;
               }
 
-              return _context4.abrupt("return");
+              return _context4.abrupt("return", Promise.resolve(false));
 
             case 2:
               _context4.next = 4;
@@ -386,8 +391,8 @@ function () {
             case 2:
               changes = _context5.sent;
               changesWithDocs = changes.results.map(function (change) {
-                var doc = change.doc;
-                doc[_this5.deletedFlag] = !!change.deleted;
+                var doc = change['doc'];
+                doc[_this5.deletedFlag] = !!change['deleted'];
                 delete doc._rev;
                 delete doc._deleted;
                 delete doc._attachments;
@@ -543,14 +548,21 @@ function () {
                * we create the event and emit it,
                * so other instances get informed about it
                */
-              originalDoc = clone(toPouch);
-              originalDoc._deleted = deletedValue;
+              originalDoc = flatClone(toPouch);
+
+              if (deletedValue) {
+                originalDoc._deleted = deletedValue;
+              } else {
+                delete originalDoc._deleted;
+              }
+
               delete originalDoc[this.deletedFlag];
+              delete originalDoc._revisions;
               originalDoc._rev = newRevision;
               cE = changeEventfromPouchChange(originalDoc, this.collection);
               this.collection.$emit(cE);
 
-            case 17:
+            case 18:
             case "end":
               return _context6.stop();
           }
@@ -566,11 +578,16 @@ function () {
   }();
 
   _proto.cancel = function cancel() {
-    if (this.isStopped()) return;
-    if (this.changesSub) this.changesSub.cancel();
+    if (this.isStopped()) return Promise.resolve(false);
+
+    this._subs.forEach(function (sub) {
+      return sub.unsubscribe();
+    });
 
     this._subjects.canceled.next(true); // TODO
 
+
+    return Promise.resolve(true);
   };
 
   return RxGraphQLReplicationState;
@@ -655,18 +672,21 @@ export function syncGraphQL(_ref2) {
       }
 
       if (push) {
-        replicationState.changesSub = collection.pouch.changes({
-          since: 'now',
-          live: true,
-          include_docs: true
-        }).on('change', function (change) {
+        /**
+         * we have to use the rxdb changestream
+         * because the pouchdb.changes stream sometimes
+         * does not emit events or stucks
+         */
+        var changeEventsSub = collection.$.subscribe(function (changeEvent) {
           if (replicationState.isStopped()) return;
-          var rev = change.doc._rev;
+          var rev = changeEvent.data.v._rev;
 
-          if (!wasRevisionfromPullReplication(replicationState.endpointHash, rev)) {
+          if (rev && !wasRevisionfromPullReplication(replicationState.endpointHash, rev)) {
             replicationState.run();
           }
         });
+
+        replicationState._subs.push(changeEventsSub);
       }
     }
   });
@@ -682,3 +702,4 @@ export default {
   rxdb: rxdb,
   prototypes: prototypes
 };
+//# sourceMappingURL=index.js.map
